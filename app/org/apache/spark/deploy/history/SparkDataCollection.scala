@@ -34,6 +34,8 @@ import org.apache.spark.ui.exec.ExecutorsListener
 import org.apache.spark.ui.jobs.JobProgressListener
 import org.apache.spark.ui.storage.StorageListener
 import org.apache.spark.util.collection.OpenHashSet
+import org.json4s.{DefaultFormats, JValue}
+import org.json4s.jackson.JsonMethods.parse
 
 /**
  * This class wraps the logic of collecting the data in SparkEventListeners into the
@@ -309,7 +311,21 @@ class SparkDataCollection extends SparkApplicationData {
     replayBus.addListener(executorsListener)
     replayBus.addListener(storageListener)
     replayBus.addListener(storageStatusTrackingListener)
-    replayBus.replay(in, sourceName, maybeTruncated = false)
+
+    // CHECKME filter only for spark 2.x event log
+    // ex. {"Event":"org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionStart"
+    //     {"Event":"org.apache.spark.sql.execution.ui.SparkListenerDriverAccumUpdates"
+    //     {"Event":"org.apache.spark.sql.streaming.StreamingQueryListener$QueryProgress" ...
+    implicit val formats = DefaultFormats
+    replayBus.replay(in, sourceName, maybeTruncated = false, { (eventString: String) => {
+      val json = parse(eventString)
+
+      (json \ "Event").extract[String] match {
+        case valueStrig if valueStrig.contains("org.apache.spark.") => false
+        case _ => true
+      }
+    }
+    })
   }
 }
 
